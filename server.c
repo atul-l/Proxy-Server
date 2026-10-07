@@ -4,24 +4,48 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
+#include <netdb.h>
 
 #define PORT 8080
 #define BUFFER_SIZE 4096
 
-int http(char *request, char *method, char *path, char *host)
-{
+int http(char *request, char *method, char *path, char *host){
     char *host_start;
-    if (sscanf(request, "%s %s", method, path) != 2)
-    {
+    if (sscanf(request, "%s %s", method, path) != 2){
         return -1;
     }
     host_start = strstr(request, "Host:");
-    if (host_start == NULL)
-    {
+    if (host_start == NULL){
         return -1;
     }
     sscanf(host_start, "Host: %s", host);
     return 0;
+}
+
+int connect_server(char *host){
+    int socketfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (socketfd < 0){
+        printf("Destination socket creation failed\n");
+        return -1;
+    }
+    struct hostent *server = gethostbyname(host);
+    if (server == NULL){
+        printf("Host not found: %s\n", host);
+        close(socketfd);
+        return -1;
+    }
+    struct sockaddr_in server_addr;
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(80);
+    memcpy(&server_addr.sin_addr.s_addr, server->h_addr, server->h_length);
+    if (connect(socketfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0){
+        printf("Connection to destination server failed\n");
+        close(socketfd);
+        return -1;
+    }
+    printf("Connected to destination server\n");
+    return socketfd;
 }
 
 int main()
@@ -76,6 +100,11 @@ int main()
             printf("Method: %s\n", method);
             printf("Path: %s\n", path);
             printf("Host: %s\n", host);
+            int destination_socket = connect_server(host);
+            if (destination_socket >= 0){
+                printf("Destination connection successful\n");
+                close(destination_socket);
+            }
         }
         else
         {
