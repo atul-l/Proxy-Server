@@ -12,7 +12,21 @@
 
 #define PORT 8080
 #define BUFFER_SIZE 4096
-#define MAX_BLOCKED_DOMAINS 2
+#define MAX_BLOCKED_DOMAINS 3
+#define CACHE_SIZE 10
+#define CACHE_TTL 60
+
+struct CacheEntry
+{
+    char host[200];
+    char path[500];
+    char *response;
+    size_t response_size;
+    time_t timestamp;
+    int valid;
+};
+struct CacheEntry cache[CACHE_SIZE];
+pthread_mutex_t cache_mutex = PTHREAD_MUTEX_INITIALIZER;
 const char *blocked_domains[MAX_BLOCKED_DOMAINS] = {
     "example.com",
     "httpforever.com"};
@@ -125,6 +139,38 @@ void log_traffic(const char *host, const char *method, int status, long bytes, l
     }
     fprintf(logfile, "[%s] Host: %s | Method: %s | Status: %d | Bytes: %ld | Duration: %ld ms\n", timestamp, host, method, status, bytes, duration_ms);
     fclose(logfile);
+}
+
+int get_cached_response(const char *host, const char *path, char **response, size_t *response_size)
+{
+    int found = 0;
+    time_t now = time(NULL);
+    pthread_mutex_lock(&cache_mutex);
+    for (int i = 0; i < CACHE_SIZE; i++)
+    {
+        if (cache[i].valid && strcmp(cache[i].host, host) == 0 && strcmp(cache[i].path, path) == 0)
+        {
+            if (now - cache[i].timestamp < CACHE_TTL)
+            {
+                *response = malloc(cache[i].response_size);
+                if (*response != NULL)
+                {
+                    memcpy(*response, cache[i].response, cache[i].response_size);
+                    *response_size = cache[i].response_size;
+                    found = 1;
+                }
+            }
+            else
+            {
+                free(cache[i].response);
+                cache[i].response = NULL;
+                cache[i].valid = 0;
+            }
+            break;
+        }
+    }
+    pthread_mutex_unlock(&cache_mutex);
+    return found;
 }
 
 void *handle_client(void *arg)
