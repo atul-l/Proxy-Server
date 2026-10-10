@@ -123,10 +123,24 @@ int main()
                     int response_bytes;
                     response_bytes = recv(destination_socket, response, sizeof(response), 0);
                     if (response_bytes > 0)
-                    {
                         printf("HTTP response received from destination server\n");
-                        printf("Response size: %d bytes\n", response_bytes);
+                    printf("Response size: %d bytes\n", response_bytes);
+                    int total_sent = 0;
+                    while (total_sent < response_bytes)
+                    {
+                        int sbytes = send(client_sockfd, response + total_sent, response_bytes - total_sent, 0);
+                        if (sbytes <= 0)
+                        {
+                            printf("Failed to forward response to client\n");
+                            break;
+                        }
+                        total_sent += sbytes;
                     }
+                    if (total_sent == response_bytes)
+                    {
+                        printf("HTTP response forwarded to client\n");
+                    }
+
                     else
                     {
                         printf("Failed to receive HTTP response\n");
