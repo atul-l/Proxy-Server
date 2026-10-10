@@ -10,6 +10,12 @@
 
 #define PORT 8080
 #define BUFFER_SIZE 4096
+#define MAX_BLOCKED_DOMAINS 3
+const char *blocked_domains[MAX_BLOCKED_DOMAINS] = {
+    "example.com",
+    "httpforever.com"
+};
+
 
 int http(char *request, char *method, char *path, char *host)
 {
@@ -26,6 +32,20 @@ int http(char *request, char *method, char *path, char *host)
     sscanf(host_start, "Host: %s", host);
     return 0;
 }
+int is_blocked(char *host){
+    for (int i = 0; i < MAX_BLOCKED_DOMAINS; i++){
+        size_t host_len = strlen(host);
+        size_t blocked_len = strlen(blocked_domains[i]);
+        if (strcasecmp(host, blocked_domains[i]) == 0){
+            return 1;
+        }
+        if (host_len > blocked_len && host[host_len - blocked_len - 1] == '.' && strcasecmp(host + host_len - blocked_len, blocked_domains[i]) == 0){
+            return 1;
+        }
+    }
+    return 0;
+}
+
 
 int connect_server(char *host)
 {
@@ -67,6 +87,17 @@ int send_all(int sockfd, const char *data, int length){
     }
     return total_sent;
 }
+void send_forbidden(int client_sockfd){
+    const char *body = "Access Denied by Proxy";
+    char response[256];
+    int length = snprintf(response, sizeof(response),"HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nConnection: close\r\nContent-Length: %zu\r\n\r\n%s", strlen(body), body);
+    if (length > 0 && length < sizeof(response)){
+        send_all(client_sockfd, response, length);
+    }
+}
+
+
+
 
 void *handle_client(void *arg){
     int client_sockfd = *(int *)arg;
@@ -86,6 +117,13 @@ void *handle_client(void *arg){
             printf("Method: %s\n", method);
             printf("Path: %s\n", path);
             printf("Host: %s\n", host);
+            if (is_blocked(host)){
+                printf("Access denied: %s is blocked\n", host);
+                send_forbidden(client_sockfd);
+                close(client_sockfd);
+                return NULL;
+            }
+            printf("Access allowed: %s\n", host);
             int destination_socket = connect_server(host);
             if (destination_socket >= 0){
                 printf("Destination connection successful\n");
