@@ -103,6 +103,13 @@ int main()
             int destination_socket = connect_server(host);
             if (destination_socket >= 0){
                 printf("Destination connection successful\n");
+                int sbytes = send(destination_socket, buf, rbytes, 0);
+                if (sbytes < 0){
+                    printf("Failed to send HTTP request\n");
+                }
+                else{
+                    printf("HTTP request forwarded to destination server\n");
+                }
                 close(destination_socket);
             }
         }
