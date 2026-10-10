@@ -54,6 +54,20 @@ int connect_server(char *host)
     printf("Connected to destination server\n");
     return socketfd;
 }
+int send_all(int sockfd, const char *data, int length)
+{
+    int total_sent = 0;
+    while (total_sent < length)
+    {
+        int sbytes = send(sockfd, data + total_sent, length - total_sent, 0);
+        if (sbytes <= 0)
+        {
+            return -1;
+        }
+        total_sent += sbytes;
+    }
+    return total_sent;
+}
 
 int main()
 {
@@ -111,7 +125,16 @@ int main()
             if (destination_socket >= 0)
             {
                 printf("Destination connection successful\n");
-                int sbytes = send(destination_socket, buf, rbytes, 0);
+                char *header_end = strstr(buf, "\r\n\r\n");
+                if (header_end == NULL)
+                {
+                    printf("Invalid HTTP request headers\n");
+                    close(destination_socket);
+                    close(client_sockfd);
+                    return 1;
+                }
+                int request_length = rbytes;
+                int sbytes = send_all(destination_socket, buf, request_length);
                 if (sbytes < 0)
                 {
                     printf("Failed to send HTTP request\n");
@@ -121,33 +144,34 @@ int main()
                     printf("HTTP request forwarded to destination server\n");
                     char response[BUFFER_SIZE];
                     int response_bytes;
-                    response_bytes = recv(destination_socket, response, sizeof(response), 0);
-                    if (response_bytes > 0)
-                        printf("HTTP response received from destination server\n");
-                    printf("Response size: %d bytes\n", response_bytes);
-                    int total_sent = 0;
-                    while (total_sent < response_bytes)
+                    long total_received = 0;
+                    while ((response_bytes = recv(destination_socket, response, sizeof(response), 0)) > 0)
                     {
-                        int sbytes = send(client_sockfd, response + total_sent, response_bytes - total_sent, 0);
-                        if (sbytes <= 0)
+                        total_received += response_bytes;
+                        printf("HTTP response received from destination server\n");
+                        printf("Response size: %d bytes\n", response_bytes);
+                        int sbytes = send_all(client_sockfd, response, response_bytes);
+                        if (sbytes < 0)
                         {
                             printf("Failed to forward response to client\n");
                             break;
                         }
-                        total_sent += sbytes;
+                    
                     }
-                    if (total_sent == response_bytes)
+                    if (response_bytes == 0)
                     {
-                        printf("HTTP response forwarded to client\n");
+                            printf("Destination server closed the connection\n");
+                            printf("Total response bytes: %ld\n", total_received);
+                            printf("HTTP response forwarded to client\n");
                     }
 
-                    else
+                    else if (response_bytes < 0)
                     {
-                        printf("Failed to receive HTTP response\n");
+                    printf("Failed to receive HTTP response\n");
                     }
                 }
-                close(destination_socket);
             }
+            close(destination_socket);
         }
         else
         {
