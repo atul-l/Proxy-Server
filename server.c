@@ -9,27 +9,33 @@
 #define PORT 8080
 #define BUFFER_SIZE 4096
 
-int http(char *request, char *method, char *path, char *host){
+int http(char *request, char *method, char *path, char *host)
+{
     char *host_start;
-    if (sscanf(request, "%s %s", method, path) != 2){
+    if (sscanf(request, "%s %s", method, path) != 2)
+    {
         return -1;
     }
     host_start = strstr(request, "Host:");
-    if (host_start == NULL){
+    if (host_start == NULL)
+    {
         return -1;
     }
     sscanf(host_start, "Host: %s", host);
     return 0;
 }
 
-int connect_server(char *host){
+int connect_server(char *host)
+{
     int socketfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (socketfd < 0){
+    if (socketfd < 0)
+    {
         printf("Destination socket creation failed\n");
         return -1;
     }
     struct hostent *server = gethostbyname(host);
-    if (server == NULL){
+    if (server == NULL)
+    {
         printf("Host not found: %s\n", host);
         close(socketfd);
         return -1;
@@ -39,7 +45,8 @@ int connect_server(char *host){
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(80);
     memcpy(&server_addr.sin_addr.s_addr, server->h_addr, server->h_length);
-    if (connect(socketfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0){
+    if (connect(socketfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0)
+    {
         printf("Connection to destination server failed\n");
         close(socketfd);
         return -1;
@@ -101,14 +108,29 @@ int main()
             printf("Path: %s\n", path);
             printf("Host: %s\n", host);
             int destination_socket = connect_server(host);
-            if (destination_socket >= 0){
+            if (destination_socket >= 0)
+            {
                 printf("Destination connection successful\n");
                 int sbytes = send(destination_socket, buf, rbytes, 0);
-                if (sbytes < 0){
+                if (sbytes < 0)
+                {
                     printf("Failed to send HTTP request\n");
                 }
-                else{
+                else
+                {
                     printf("HTTP request forwarded to destination server\n");
+                    char response[BUFFER_SIZE];
+                    int response_bytes;
+                    response_bytes = recv(destination_socket, response, sizeof(response), 0);
+                    if (response_bytes > 0)
+                    {
+                        printf("HTTP response received from destination server\n");
+                        printf("Response size: %d bytes\n", response_bytes);
+                    }
+                    else
+                    {
+                        printf("Failed to receive HTTP response\n");
+                    }
                 }
                 close(destination_socket);
             }
