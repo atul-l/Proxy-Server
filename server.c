@@ -11,6 +11,7 @@
 #include <time.h>
 #include <sys/time.h>
 #include <arpa/inet.h>
+#include <errno.h>
 
 #define PORT 8080
 #define BUFFER_SIZE 4096
@@ -180,7 +181,6 @@ void not_implemented(int client_sockfd)
         send_all(client_sockfd, response, (size_t)length);
     }
 }
-
 
 int build_request(const char *method, const char *req_path, const char *buf, int length, char *out, int out_size)
 {
@@ -419,7 +419,7 @@ void *handle_client(void *arg)
                 if (get_cached_response(host, path, &cached_response, &cached_size))
                 {
                     tl_cache = "HIT";
-                    printf("CACHE HIT: %s%s\n", host, path);
+                    printf("CACHE HIT: %s %s\n", host, path);
                     int sent = send_all(client_sockfd, cached_response, (int)cached_size);
                     if (sent > 0)
                     {
@@ -434,7 +434,7 @@ void *handle_client(void *arg)
                     return NULL;
                 }
                 tl_cache = "MISS";
-                printf("CACHE MISS: %s%s\n", host, path);
+                printf("CACHE MISS: %s %s\n", host, path);
             }
             int destination_socket = connect_server(host, 80);
             if (destination_socket >= 0)
@@ -513,23 +513,28 @@ void *handle_client(void *arg)
                             log_traffic(log_host, log_method, log_status, log_bytes, duration_ms);
                             break;
                         }
-                        if (response_bytes < 0)
-                        {
+                        if (response_bytes < 0){
+                            int saved_errno = errno;
                             free(full_response);
                             full_response = NULL;
-                            if (log_status == 0)
+                            if (saved_errno == EAGAIN || saved_errno == EWOULDBLOCK)
+                                printf("Destination response timed out\n");
+                            else
+                                perror("Failed to receive HTTP response");
+                            if (total_received == 0)
                             {
                                 log_status = 502;
                                 bad_gateway(client_sockfd);
                             }
-                            printf("Failed to receive HTTP response\n");
                             gettimeofday(&end_time, NULL);
                             long duration_ms = (end_time.tv_sec - start_time.tv_sec) * 1000L + (end_time.tv_usec - start_time.tv_usec) / 1000L;
-                            log_traffic(log_host, log_method, log_status, total_received, duration_ms);
+
+                            log_traffic(log_host,log_method,log_status,total_received,duration_ms);
+
                             break;
                         }
-                        response[response_bytes] = '\0';
-                        total_received += response_bytes;
+
+                            total_received += response_bytes;
                         if (cacheable)
                         {
                             if (full_response_size + (size_t)response_bytes <= 5 * 1024 * 1024)
