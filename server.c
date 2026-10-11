@@ -20,7 +20,7 @@
 
 struct CacheEntry
 {
-    char host[200];
+    char host[256];
     char path[2048];
     char *response;
     size_t response_size;
@@ -367,12 +367,21 @@ void *handle_client(void *arg)
         printf("Message from client:\n%s\n", buf);
         char method[20];
         char path[2048];
-        char host[200];
+        char host[256];
         if (http(buf, method, path, host) == 0)
         {
-            snprintf(log_host, sizeof(log_host), "%s", host);
+            snprintf(log_host, sizeof(log_host), "%.199s", host);
             snprintf(log_method, sizeof(log_method), "%s", method);
             snprintf(tl_path, sizeof(tl_path), "%s", path);
+            int port = 80;
+            char *colon = strchr(host, ':');
+            if (colon != NULL)
+            {
+                *colon = '\0';
+                port = atoi(colon + 1);
+                if (port <= 0 || port > 65535)
+                    port = 80;
+            }
             if (strcmp(method, "CONNECT") == 0)
             {
                 printf("CONNECT not supported (HTTPS)\n");
@@ -519,6 +528,7 @@ void *handle_client(void *arg)
                             log_traffic(log_host, log_method, log_status, total_received, duration_ms);
                             break;
                         }
+                        response[response_bytes] = '\0';
                         total_received += response_bytes;
                         if (cacheable)
                         {
@@ -568,6 +578,7 @@ void *handle_client(void *arg)
                             break;
                         }
                     }
+                    free(full_response);
                 }
                 close(destination_socket);
             }
@@ -615,7 +626,11 @@ int main()
         printf("Socket creation failed...\n");
         return 1;
     }
+    int opt = 1;
+    setsockopt(socketfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
     struct sockaddr_in server_addr;
+    memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(PORT);
     server_addr.sin_addr.s_addr = INADDR_ANY;
