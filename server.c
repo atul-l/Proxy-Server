@@ -29,7 +29,8 @@ struct CacheEntry cache[CACHE_SIZE];
 pthread_mutex_t cache_mutex = PTHREAD_MUTEX_INITIALIZER;
 const char *blocked_domains[MAX_BLOCKED_DOMAINS] = {
     "example.com",
-    "httpforever.com"};
+    "httpforever.com",
+    "textfiles.com"};
 
 int http(char *request, char *method, char *path, char *host)
 {
@@ -112,7 +113,7 @@ void send_forbidden(int client_sockfd)
     const char *body = "Access Denied by Proxy";
     char response[256];
     int length = snprintf(response, sizeof(response), "HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nConnection: close\r\nContent-Length: %zu\r\n\r\n%s", strlen(body), body);
-    if (length > 0 && length < sizeof(response))
+    if (length > 0 && (size_t)length < sizeof(response))
     {
         send_all(client_sockfd, response, length);
     }
@@ -173,6 +174,45 @@ int get_cached_response(const char *host, const char *path, char **response, siz
     return found;
 }
 
+void store_cached_response(const char *host, const char *path, const char *response, size_t response_size)
+{
+    if (response_size == 0)
+        return;
+    char *copy = malloc(response_size);
+    if (copy == NULL)
+        return;
+    memcpy(copy, response, response_size);
+    pthread_mutex_lock(&cache_mutex);
+    int index = -1;
+    for (int i = 0; i < CACHE_SIZE; i++)
+    {
+        if (cache[i].valid && strcmp(cache[i].host, host) == 0 && strcmp(cache[i].path, path) == 0)
+        {
+            index = i;
+            break;
+        }
+        if (!cache[i].valid && index == -1)
+            index = i;
+    }
+    if (index == -1)
+    {
+        index = 0;
+        for (int i = 1; i < CACHE_SIZE; i++)
+        {
+            if (cache[i].timestamp < cache[index].timestamp)
+                index = i;
+        }
+    }
+    free(cache[index].response);
+    snprintf(cache[index].host, sizeof(cache[index].host), "%s", host);
+    snprintf(cache[index].path, sizeof(cache[index].path), "%s", path);
+    cache[index].response = copy;
+    cache[index].response_size = response_size;
+    cache[index].timestamp = time(NULL);
+    cache[index].valid = 1;
+    pthread_mutex_unlock(&cache_mutex);
+}
+
 void *handle_client(void *arg)
 {
     int client_sockfd = *(int *)arg;
@@ -216,6 +256,25 @@ void *handle_client(void *arg)
                 return NULL;
             }
             printf("Access allowed: %s\n", host);
+            if (strcmp(method, "GET") == 0){
+                char *cached_response = NULL;
+                size_t cached_size = 0;
+                if (get_cached_response(host, path, &cached_response, &cached_size)){
+                    printf("CACHE HIT: %s%s\n", host, path);
+                    int sent = send_all(client_sockfd, cached_response, (int)cached_size);
+                    if (sent > 0){
+                        log_status = 200;
+                        log_bytes = cached_size;
+                    }
+                    free(cached_response);
+                    gettimeofday(&end_time, NULL);
+                    long duration_ms = (end_time.tv_sec - start_time.tv_sec) * 1000L + (end_time.tv_usec - start_time.tv_usec) / 1000L;
+                    log_traffic(log_host, log_method, log_status, log_bytes, duration_ms);
+                    close(client_sockfd);
+                    return NULL;
+                }
+                printf("CACHE MISS: %s%s\n", host, path);
+            }
             int destination_socket = connect_server(host);
             if (destination_socket >= 0)
             {
@@ -240,11 +299,20 @@ void *handle_client(void *arg)
                     char response[BUFFER_SIZE];
                     int response_bytes;
                     long total_received = 0;
+                    char *full_response = NULL;
+                    size_t full_response_size = 0;
+                    int cacheable = (strcmp(method, "GET") == 0);
                     while (1)
                     {
                         response_bytes = recv(destination_socket, response, sizeof(response), 0);
                         if (response_bytes == 0)
                         {
+                            if (cacheable && full_response != NULL && full_response_size > 0 && log_status == 200){
+                                store_cached_response(host, path, full_response, full_response_size);
+                                printf("Response saved in cache\n");
+                            }
+                            free(full_response);
+                            full_response = NULL;
                             printf("Destination server closed the connection\n");
                             printf("Total response bytes: %ld\n", total_received);
                             printf("HTTP response forwarded to client\n");
@@ -260,6 +328,28 @@ void *handle_client(void *arg)
                             break;
                         }
                         total_received += response_bytes;
+                        if (cacheable){
+                            if (full_response_size + (size_t)response_bytes <= 5 * 1024 * 1024){
+                                char *temp = realloc(full_response, full_response_size + (size_t)response_bytes);
+                                if (temp != NULL){
+                                    full_response = temp;
+                                    memcpy(full_response + full_response_size, response, (size_t)response_bytes);
+                                    full_response_size += (size_t)response_bytes;
+                                }
+                                else{
+                                    free(full_response);
+                                    full_response = NULL;
+                                    full_response_size = 0;
+                                    cacheable = 0;
+                                }
+                            }
+                            else{
+                                free(full_response);
+                                full_response = NULL;
+                                full_response_size = 0;
+                                cacheable = 0;
+                            }
+                        }
                         if (log_status == 0)
                         {
                             char *status_start = strstr(response, "HTTP/");
