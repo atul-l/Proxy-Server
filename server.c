@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -9,6 +10,7 @@
 #include <signal.h>
 #include <time.h>
 #include <sys/time.h>
+#include <arpa/inet.h>
 
 #define PORT 8080
 #define BUFFER_SIZE 4096
@@ -24,6 +26,7 @@ struct CacheEntry
     size_t response_size;
     time_t timestamp;
     int valid;
+    int ttl;
 };
 struct CacheEntry cache[CACHE_SIZE];
 pthread_mutex_t cache_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -32,19 +35,24 @@ const char *blocked_domains[MAX_BLOCKED_DOMAINS] = {
     "httpforever.com",
     "textfiles.com"};
 
-int http(char *request, char *method, char *path, char *host){
+int http(char *request, char *method, char *path, char *host)
+{
     char *host_start;
-    if (sscanf(request, "%19s %2047s", method, path) != 2){
+    if (sscanf(request, "%19s %2047s", method, path) != 2)
+    {
         return -1;
     }
-    if (strlen(path) >= 2047){
+    if (strlen(path) >= 2047)
+    {
         return -1;
     }
     host_start = strstr(request, "Host:");
-    if (host_start == NULL){
+    if (host_start == NULL)
+    {
         return -1;
     }
-    if (sscanf(host_start, "Host: %199s", host) != 1){
+    if (sscanf(host_start, "Host: %199s", host) != 1)
+    {
         return -1;
     }
     return 0;
@@ -67,8 +75,8 @@ int is_blocked(char *host)
     return 0;
 }
 
-
-void set_timeout(int sockfd){
+void set_timeout(int sockfd)
+{
     struct timeval tv;
     tv.tv_sec = 10;
     tv.tv_usec = 0;
@@ -76,7 +84,8 @@ void set_timeout(int sockfd){
     setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 }
 
-int connect_server(char *host, int port){
+int connect_server(char *host, int port)
+{
     struct addrinfo hints, *res, *rp;
     char port_str[8];
     int socketfd = -1;
@@ -84,11 +93,13 @@ int connect_server(char *host, int port){
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
     snprintf(port_str, sizeof(port_str), "%d", port);
-    if (getaddrinfo(host, port_str, &hints, &res) != 0){
+    if (getaddrinfo(host, port_str, &hints, &res) != 0)
+    {
         printf("Host not found: %s\n", host);
         return -1;
     }
-    for (rp = res; rp != NULL; rp = rp->ai_next){
+    for (rp = res; rp != NULL; rp = rp->ai_next)
+    {
         socketfd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
         if (socketfd < 0)
             continue;
@@ -99,7 +110,8 @@ int connect_server(char *host, int port){
         socketfd = -1;
     }
     freeaddrinfo(res);
-    if (socketfd < 0){
+    if (socketfd < 0)
+    {
         printf("Connection to destination server failed\n");
         return -1;
     }
@@ -143,11 +155,13 @@ void bad_request(int client_sockfd)
     }
 }
 
-void bad_gateway(int client_sockfd){
+void bad_gateway(int client_sockfd)
+{
     const char *body = "502 Bad Gateway";
     char response[256];
     int length = snprintf(response, sizeof(response), "HTTP/1.1 502 Bad Gateway\r\nContent-Type: text/plain\r\nConnection: close\r\nContent-Length: %zu\r\n\r\n%s", strlen(body), body);
-    if (length > 0 && (size_t)length < sizeof(response)){
+    if (length > 0 && (size_t)length < sizeof(response))
+    {
         send_all(client_sockfd, response, (size_t)length);
     }
 }
@@ -217,6 +231,29 @@ void log_traffic(const char *host, const char *method, int status, long bytes, l
     fclose(logfile);
 }
 
+int cache_ttl(const char *resp, size_t len)
+{
+    const char *end = memmem(resp, len, "\r\n\r\n", 4);
+    if (end == NULL || (size_t)(end - resp) >= 8192)
+        return 0;
+    size_t hlen = (size_t)(end - resp);
+    char headers[8192];
+    memcpy(headers, resp, hlen);
+    headers[hlen] = '\0';
+    if (strcasestr(headers, "\r\nSet-Cookie:") != NULL || strcasestr(headers, "no-store") != NULL ||
+        strcasestr(headers, "no-cache") != NULL || strcasestr(headers, "private") != NULL)
+        return 0;
+    const char *ma = strcasestr(headers, "max-age=");
+    if (ma != NULL)
+    {
+        int age = atoi(ma + 8);
+        if (age <= 0)
+            return 0;
+        return age > 3600 ? 3600 : age;
+    }
+    return CACHE_TTL;
+}
+
 int get_cached_response(const char *host, const char *path, char **response, size_t *response_size)
 {
     int found = 0;
@@ -226,7 +263,7 @@ int get_cached_response(const char *host, const char *path, char **response, siz
     {
         if (cache[i].valid && strcmp(cache[i].host, host) == 0 && strcmp(cache[i].path, path) == 0)
         {
-            if (now - cache[i].timestamp < CACHE_TTL)
+            if (now - cache[i].timestamp < cache[i].ttl)
             {
                 *response = malloc(cache[i].response_size);
                 if (*response != NULL)
@@ -249,7 +286,7 @@ int get_cached_response(const char *host, const char *path, char **response, siz
     return found;
 }
 
-void store_cached_response(const char *host, const char *path, const char *response, size_t response_size)
+void store_cached_response(const char *host, const char *path, const char *response, size_t response_size, int ttl)
 {
     if (response_size == 0)
         return;
@@ -284,6 +321,7 @@ void store_cached_response(const char *host, const char *path, const char *respo
     cache[index].response = copy;
     cache[index].response_size = response_size;
     cache[index].timestamp = time(NULL);
+    cache[index].ttl = ttl;
     cache[index].valid = 1;
     pthread_mutex_unlock(&cache_mutex);
 }
@@ -294,6 +332,7 @@ void *handle_client(void *arg)
     free(arg);
     struct timeval start_time, end_time;
     gettimeofday(&start_time, NULL);
+    set_timeout(client_sockfd);
     char log_host[200] = "unknown";
     char log_method[20] = "unknown";
     int log_status = 0;
@@ -381,7 +420,7 @@ void *handle_client(void *arg)
                     close(client_sockfd);
                     return NULL;
                 }
-                int sbytes = send_all(destination_socket, buf, request_length);
+                int sbytes = send_all(destination_socket, request, request_length);
                 if (sbytes < 0)
                 {
                     printf("Failed to send HTTP request\n");
@@ -402,8 +441,16 @@ void *handle_client(void *arg)
                         {
                             if (cacheable && full_response != NULL && full_response_size > 0 && log_status == 200)
                             {
-                                store_cached_response(host, path, full_response, full_response_size);
-                                printf("Response saved in cache\n");
+                                int ttl = cache_ttl(full_response, full_response_size);
+                                if (ttl > 0)
+                                {
+                                    store_cached_response(host, path, full_response, full_response_size, ttl);
+                                    printf("Response saved in cache (ttl %d s)\n", ttl);
+                                }
+                                else
+                                {
+                                    printf("Response not cached (Cache-Control / Set-Cookie)\n");
+                                }
                             }
                             free(full_response);
                             full_response = NULL;
