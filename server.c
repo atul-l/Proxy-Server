@@ -65,35 +65,46 @@ int is_blocked(char *host)
     return 0;
 }
 
-int connect_server(char *host)
-{
-    int socketfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (socketfd < 0)
-    {
-        printf("Destination socket creation failed\n");
-        return -1;
-    }
-    struct hostent *server = gethostbyname(host);
-    if (server == NULL)
-    {
+
+void set_timeout(int sockfd){
+    struct timeval tv;
+    tv.tv_sec = 10;
+    tv.tv_usec = 0;
+    setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+}
+
+int connect_server(char *host, int port){
+    struct addrinfo hints, *res, *rp;
+    char port_str[8];
+    int socketfd = -1;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    snprintf(port_str, sizeof(port_str), "%d", port);
+    if (getaddrinfo(host, port_str, &hints, &res) != 0){
         printf("Host not found: %s\n", host);
-        close(socketfd);
         return -1;
     }
-    struct sockaddr_in server_addr;
-    memset(&server_addr, 0, sizeof(server_addr));
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(80);
-    memcpy(&server_addr.sin_addr.s_addr, server->h_addr, server->h_length);
-    if (connect(socketfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0)
-    {
-        printf("Connection to destination server failed\n");
+    for (rp = res; rp != NULL; rp = rp->ai_next){
+        socketfd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+        if (socketfd < 0)
+            continue;
+        set_timeout(socketfd);
+        if (connect(socketfd, rp->ai_addr, rp->ai_addrlen) == 0)
+            break;
         close(socketfd);
+        socketfd = -1;
+    }
+    freeaddrinfo(res);
+    if (socketfd < 0){
+        printf("Connection to destination server failed\n");
         return -1;
     }
     printf("Connected to destination server\n");
     return socketfd;
 }
+
 int send_all(int sockfd, const char *data, int length)
 {
     int total_sent = 0;
@@ -299,7 +310,7 @@ void *handle_client(void *arg)
                 }
                 printf("CACHE MISS: %s%s\n", host, path);
             }
-            int destination_socket = connect_server(host);
+            int destination_socket = connect_server(host, 80);
             if (destination_socket >= 0)
             {
                 printf("Destination connection successful\n");
