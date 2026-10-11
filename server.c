@@ -32,19 +32,24 @@ const char *blocked_domains[MAX_BLOCKED_DOMAINS] = {
     "httpforever.com",
     "textfiles.com"};
 
-int http(char *request, char *method, char *path, char *host){
+int http(char *request, char *method, char *path, char *host)
+{
     char *host_start;
-    if (sscanf(request, "%19s %2047s", method, path) != 2){
+    if (sscanf(request, "%19s %2047s", method, path) != 2)
+    {
         return -1;
     }
-    if (strlen(path) >= 2047){
+    if (strlen(path) >= 2047)
+    {
         return -1;
     }
     host_start = strstr(request, "Host:");
-    if (host_start == NULL){
+    if (host_start == NULL)
+    {
         return -1;
     }
-    if (sscanf(host_start, "Host: %199s", host) != 1){
+    if (sscanf(host_start, "Host: %199s", host) != 1)
+    {
         return -1;
     }
     return 0;
@@ -67,8 +72,8 @@ int is_blocked(char *host)
     return 0;
 }
 
-
-void set_timeout(int sockfd){
+void set_timeout(int sockfd)
+{
     struct timeval tv;
     tv.tv_sec = 10;
     tv.tv_usec = 0;
@@ -76,7 +81,8 @@ void set_timeout(int sockfd){
     setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 }
 
-int connect_server(char *host, int port){
+int connect_server(char *host, int port)
+{
     struct addrinfo hints, *res, *rp;
     char port_str[8];
     int socketfd = -1;
@@ -84,11 +90,13 @@ int connect_server(char *host, int port){
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
     snprintf(port_str, sizeof(port_str), "%d", port);
-    if (getaddrinfo(host, port_str, &hints, &res) != 0){
+    if (getaddrinfo(host, port_str, &hints, &res) != 0)
+    {
         printf("Host not found: %s\n", host);
         return -1;
     }
-    for (rp = res; rp != NULL; rp = rp->ai_next){
+    for (rp = res; rp != NULL; rp = rp->ai_next)
+    {
         socketfd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
         if (socketfd < 0)
             continue;
@@ -99,7 +107,8 @@ int connect_server(char *host, int port){
         socketfd = -1;
     }
     freeaddrinfo(res);
-    if (socketfd < 0){
+    if (socketfd < 0)
+    {
         printf("Connection to destination server failed\n");
         return -1;
     }
@@ -143,15 +152,58 @@ void bad_request(int client_sockfd)
     }
 }
 
-void bad_gateway(int client_sockfd){
+void bad_gateway(int client_sockfd)
+{
     const char *body = "502 Bad Gateway";
     char response[256];
     int length = snprintf(response, sizeof(response), "HTTP/1.1 502 Bad Gateway\r\nContent-Type: text/plain\r\nConnection: close\r\nContent-Length: %zu\r\n\r\n%s", strlen(body), body);
-    if (length > 0 && (size_t)length < sizeof(response)){
+    if (length > 0 && (size_t)length < sizeof(response))
+    {
         send_all(client_sockfd, response, (size_t)length);
     }
 }
 
+int build_request(const char *method, const char *req_path, const char *buf, int length, char *out, int out_size)
+{
+    const char *end = buf + length;
+    const char *line = strstr(buf, "\r\n");
+    int o;
+    if (line == NULL)
+        return -1;
+    line += 2;
+    o = snprintf(out, out_size, "%s %s HTTP/1.1\r\n", method, req_path);
+    if (o < 0 || o >= out_size)
+        return -1;
+    while (line < end)
+    {
+        const char *eol = strstr(line, "\r\n");
+        if (eol == NULL)
+            return -1;
+        int line_len = (int)(eol - line) + 2;
+        if (line_len == 2)
+        {
+            const char *add = "Connection: close\r\n\r\n";
+            int add_len = (int)strlen(add);
+            int rest = (int)(end - (line + 2));
+            if (o + add_len + rest > out_size)
+                return -1;
+            memcpy(out + o, add, add_len);
+            o += add_len;
+            memcpy(out + o, line + 2, rest);
+            return o + rest;
+        }
+        int skip = strncasecmp(line, "Connection:", 11) == 0 || strncasecmp(line, "Proxy-Connection:", 17) == 0 || strncasecmp(line, "Keep-Alive:", 11) == 0;
+        if (!skip)
+        {
+            if (o + line_len > out_size)
+                return -1;
+            memcpy(out + o, line, line_len);
+            o += line_len;
+        }
+        line = eol + 2;
+    }
+    return -1;
+}
 
 void log_traffic(const char *host, const char *method, int status, long bytes, long duration_ms)
 {
@@ -324,7 +376,22 @@ void *handle_client(void *arg)
                     close(client_sockfd);
                     return NULL;
                 }
-                int request_length = rbytes;
+                char request[BUFFER_SIZE];
+                const char *req_path = path;
+                if (strncasecmp(path, "http://", 7) == 0)
+                {
+                    const char *slash = strchr(path + 7, '/');
+                    req_path = slash != NULL ? slash : "/";
+                }
+                int request_length = build_request(method, req_path, buf, rbytes, request, sizeof(request));
+                if (request_length < 0)
+                {
+                    printf("Failed to build HTTP request\n");
+                    bad_request(client_sockfd);
+                    close(destination_socket);
+                    close(client_sockfd);
+                    return NULL;
+                }
                 int sbytes = send_all(destination_socket, buf, request_length);
                 if (sbytes < 0)
                 {
