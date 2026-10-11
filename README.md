@@ -17,7 +17,7 @@ This project was developed collaboratively by the following team members:
 | 3      | Agradeep Das     | 24158036    |
 
 **Project:** HTTP Proxy Server in C  
-**Course:** Computer Networks 
+**Course:** Computer Networks  
 **Institution:** Kalinga Institute of Industrial Technology (KIIT), Bhubaneswar
 
 ## 3. Features
