@@ -424,6 +424,11 @@ void *handle_client(void *arg)
                 if (sbytes < 0)
                 {
                     printf("Failed to send HTTP request\n");
+                    log_status = 502;
+                    bad_gateway(client_sockfd);
+                    gettimeofday(&end_time, NULL);
+                    long duration_ms = (end_time.tv_sec - start_time.tv_sec) * 1000L + (end_time.tv_usec - start_time.tv_usec) / 1000L;
+                    log_traffic(log_host, log_method, log_status, 15, duration_ms);
                 }
                 else
                 {
@@ -465,7 +470,17 @@ void *handle_client(void *arg)
                         }
                         if (response_bytes < 0)
                         {
+                            free(full_response);
+                            full_response = NULL;
+                            if (log_status == 0)
+                            {
+                                log_status = 502;
+                                bad_gateway(client_sockfd);
+                            }
                             printf("Failed to receive HTTP response\n");
+                            gettimeofday(&end_time, NULL);
+                            long duration_ms = (end_time.tv_sec - start_time.tv_sec) * 1000L + (end_time.tv_usec - start_time.tv_usec) / 1000L;
+                            log_traffic(log_host, log_method, log_status, total_received, duration_ms);
                             break;
                         }
                         total_received += response_bytes;
