@@ -166,6 +166,18 @@ void bad_gateway(int client_sockfd)
     }
 }
 
+void not_implemented(int client_sockfd)
+{
+    const char *body = "501 Not Implemented";
+    char response[256];
+    int length = snprintf(response, sizeof(response), "HTTP/1.1 501 Not Implemented\r\nContent-Type: text/plain\r\nConnection: close\r\nContent-Length: %zu\r\n\r\n%s", strlen(body), body);
+    if (length > 0 && (size_t)length < sizeof(response))
+    {
+        send_all(client_sockfd, response, (size_t)length);
+    }
+}
+
+
 int build_request(const char *method, const char *req_path, const char *buf, int length, char *out, int out_size)
 {
     const char *end = buf + length;
@@ -352,6 +364,18 @@ void *handle_client(void *arg)
         {
             snprintf(log_host, sizeof(log_host), "%s", host);
             snprintf(log_method, sizeof(log_method), "%s", method);
+            if (strcmp(method, "CONNECT") == 0)
+            {
+                printf("CONNECT not supported (HTTPS)\n");
+                log_status = 501;
+                log_bytes = 19;
+                gettimeofday(&end_time, NULL);
+                long duration_ms = (end_time.tv_sec - start_time.tv_sec) * 1000L + (end_time.tv_usec - start_time.tv_usec) / 1000L;
+                not_implemented(client_sockfd);
+                log_traffic(log_host, log_method, log_status, log_bytes, duration_ms);
+                close(client_sockfd);
+                return NULL;
+            }
             printf("\nHTTP Request Details:\n");
             printf("Method: %s\n", method);
             printf("Path: %s\n", path);
