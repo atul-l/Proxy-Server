@@ -119,6 +119,17 @@ void send_forbidden(int client_sockfd)
     }
 }
 
+void bad_request(int client_sockfd)
+{
+    const char *body = "400 Bad Request";
+    char response[256];
+    int length = snprintf(response, sizeof(response), "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\nConnection: close\r\nContent-Length: %zu\r\n\r\n%s", strlen(body), body);
+    if (length > 0 && (size_t)length < sizeof(response))
+    {
+        send_all(client_sockfd, response, (size_t)length);
+    }
+}
+
 void log_traffic(const char *host, const char *method, int status, long bytes, long duration_ms)
 {
     FILE *logfile = fopen("proxy.log", "a");
@@ -256,13 +267,16 @@ void *handle_client(void *arg)
                 return NULL;
             }
             printf("Access allowed: %s\n", host);
-            if (strcmp(method, "GET") == 0){
+            if (strcmp(method, "GET") == 0)
+            {
                 char *cached_response = NULL;
                 size_t cached_size = 0;
-                if (get_cached_response(host, path, &cached_response, &cached_size)){
+                if (get_cached_response(host, path, &cached_response, &cached_size))
+                {
                     printf("CACHE HIT: %s%s\n", host, path);
                     int sent = send_all(client_sockfd, cached_response, (int)cached_size);
-                    if (sent > 0){
+                    if (sent > 0)
+                    {
                         log_status = 200;
                         log_bytes = cached_size;
                     }
@@ -307,7 +321,8 @@ void *handle_client(void *arg)
                         response_bytes = recv(destination_socket, response, sizeof(response), 0);
                         if (response_bytes == 0)
                         {
-                            if (cacheable && full_response != NULL && full_response_size > 0 && log_status == 200){
+                            if (cacheable && full_response != NULL && full_response_size > 0 && log_status == 200)
+                            {
                                 store_cached_response(host, path, full_response, full_response_size);
                                 printf("Response saved in cache\n");
                             }
@@ -328,22 +343,27 @@ void *handle_client(void *arg)
                             break;
                         }
                         total_received += response_bytes;
-                        if (cacheable){
-                            if (full_response_size + (size_t)response_bytes <= 5 * 1024 * 1024){
+                        if (cacheable)
+                        {
+                            if (full_response_size + (size_t)response_bytes <= 5 * 1024 * 1024)
+                            {
                                 char *temp = realloc(full_response, full_response_size + (size_t)response_bytes);
-                                if (temp != NULL){
+                                if (temp != NULL)
+                                {
                                     full_response = temp;
                                     memcpy(full_response + full_response_size, response, (size_t)response_bytes);
                                     full_response_size += (size_t)response_bytes;
                                 }
-                                else{
+                                else
+                                {
                                     free(full_response);
                                     full_response = NULL;
                                     full_response_size = 0;
                                     cacheable = 0;
                                 }
                             }
-                            else{
+                            else
+                            {
                                 free(full_response);
                                 full_response = NULL;
                                 full_response_size = 0;
@@ -382,6 +402,13 @@ void *handle_client(void *arg)
         else
         {
             printf("HTTP request parsing failed\n");
+            log_status = 400;
+            const char *body = "400 Bad Request";
+            log_bytes = strlen(body);
+            bad_request(client_sockfd);
+            gettimeofday(&end_time, NULL);
+            long duration_ms = (end_time.tv_sec - start_time.tv_sec) * 1000L + (end_time.tv_usec - start_time.tv_usec) / 1000L;
+            log_traffic(log_host, log_method, log_status, log_bytes, duration_ms);
         }
     }
     else
