@@ -1,0 +1,62 @@
+[2026-10-11 10:43:16] Host: neverssl.com | Method: GET | Status: 200 | Bytes: 4261 | Duration: 13209 ms
+[2026-10-11 10:43:20] Host: neverssl.com | Method: GET | Status: 200 | Bytes: 4261 | Duration: 0 ms
+[2026-10-11 10:43:23] Host: neverssl.com | Method: GET | Status: 200 | Bytes: 4261 | Duration: 9021 ms
+[2026-10-11 10:43:27] Host: neverssl.com | Method: GET | Status: 200 | Bytes: 4261 | Duration: 0 ms
+[2026-10-11 10:54:26] Host: neverssl.com | Method: GET | Status: 200 | Bytes: 4261 | Duration: 8379 ms
+[2026-10-11 10:54:53] Host: neverssl.com | Method: GET | Status: 200 | Bytes: 4261 | Duration: 27574 ms
+[2026-10-11 10:54:56] Host: neverssl.com | Method: GET | Status: 200 | Bytes: 4261 | Duration: 0 ms
+[2026-10-11 10:55:00] Host: neverssl.com | Method: GET | Status: 200 | Bytes: 4261 | Duration: 0 ms
+[2026-10-11 10:55:05] Host: neverssl.com | Method: GET | Status: 200 | Bytes: 4261 | Duration: 0 ms
+[2026-10-11 16:47:38] Host: neverssl.com | Method: GET | Status: 502 | Bytes: 15 | Duration: 9027 ms
+[2026-10-11 16:48:01] Host: neverssl.com | Method: GET | Status: 200 | Bytes: 4261 | Duration: 6223 ms
+[2026-10-11 16:48:11] Host: neverssl.com | Method: GET | Status: 200 | Bytes: 4261 | Duration: 7993 ms
+[2026-10-11 16:48:21] Host: neverssl.com | Method: GET | Status: 502 | Bytes: 15 | Duration: 10247 ms
+[2026-10-11 16:59:10] Host: detectportal.firefox.com | Method: GET | Status: 200 | Bytes: 458 | Duration: 503 ms
+[2026-10-11 16:59:10] Host: push.services.mozilla.com:443 | Method: CONNECT | Status: 502 | Bytes: 15 | Duration: 0 ms
+[2026-10-11 16:59:11] Host: detectportal.firefox.com | Method: GET | Status: 200 | Bytes: 376 | Duration: 181 ms
+[2026-10-11 16:59:11] Host: detectportal.firefox.com | Method: GET | Status: 200 | Bytes: 376 | Duration: 183 ms
+[2026-10-11 16:59:16] Host: push.services.mozilla.com:443 | Method: CONNECT | Status: 502 | Bytes: 15 | Duration: 0 ms
+[2026-10-11 16:59:26] Host: push.services.mozilla.com:443 | Method: CONNECT | Status: 502 | Bytes: 15 | Duration: 0 ms
+[2026-10-11 20:04:11] Host: example.org | Method: GET | Status: 200 | Bytes: 958 | Duration: 631 ms
+[2026-10-11 20:04:14] Host: example.org | Method: GET | Status: 200 | Bytes: 958 | Duration: 0 ms
+[2026-10-11 20:04:16] Host: example.org | Method: GET | Status: 200 | Bytes: 958 | Duration: 1 ms
+[2026-10-11 20:04:21] Host: example.org | Method: GET | Status: 200 | Bytes: 958 | Duration: 0 ms
+[2026-10-11 20:10:25] Host: example.org | Method: GET | Status: 200 | Bytes: 960 | Duration: 147 ms
+[2026-10-11 20:10:32] Host: example.org | Method: GET | Status: 200 | Bytes: 960 | Duration: 0 ms
+[2026-10-11 20:11:07] Host: example.org | Method: GET | Status: 200 | Bytes: 960 | Duration: 0 ms
+[2026-10-11 20:11:44] Host: example.org | Method: GET | Status: 200 | Bytes: 960 | Duration: 0 ms
+[2026-10-11 20:12:19] Host: example.org | Method: GET | Status: 200 | Bytes: 960 | Duration: 0 ms
+[2026-10-11 20:12:46] Host: example.org | Method: GET | Status: 200 | Bytes: 960 | Duration: 0 ms
+[2026-10-11 20:13:30] Host: example.org | Method: GET | Status: 200 | Bytes: 960 | Duration: 0 ms
+[2026-10-11 20:46:18] Client: 127.0.0.1 | Host: example.org | Method: GET | Path: http://example.org/ | Status: 200 | Bytes: 961 | Duration: 174 ms | Cache: MISS
+[2026-10-11 20:46:23] Client: 127.0.0.1 | Host: example.org | Method: GET | Path: http://example.org/ | Status: 200 | Bytes: 961 | Duration: 1 ms | Cache: HIT
+[2026-10-11 20:46:25] Client: 127.0.0.1 | Host: example.org | Method: GET | Path: http://example.org/ | Status: 200 | Bytes: 961 | Duration: 0 ms | Cache: HIT
+[2026-10-11 20:46:26] Client: 127.0.0.1 | Host: example.org | Method: GET | Path: http://example.org/ | Status: 200 | Bytes: 961 | Duration: 0 ms | Cache: HIT
+[2026-10-11 21:07:44] Client: 127.0.0.1 | Host: example.org | Method: GET | Path: http://example.org/ | Status: 200 | Bytes: 961 | Duration: 133 ms | Cache: MISS
+[2026-10-11 21:07:52] Client: 127.0.0.1 | Host: example.org | Method: GET | Path: http://example.org/ | Status: 200 | Bytes: 961 | Duration: 0 ms | Cache: HIT
+[2026-10-11 21:08:03] Client: 127.0.0.1 | Host: example.com | Method: GET | Path: http://example.com/ | Status: 403 | Bytes: 22 | Duration: 0 ms | Cache: -
+[2026-10-11 21:46:28] Client: 127.0.0.1 | Host: example.org | Method: GET | Path: http://example.org/ | Status: 200 | Bytes: 961 | Duration: 197 ms | Cache: MISS
+[2026-10-11 21:48:27] Client: 127.0.0.1 | Host: example.com | Method: GET | Path: http://example.com/ | Status: 403 | Bytes: 22 | Duration: 0 ms | Cache: -
+[2026-10-11 21:48:55] Client: 127.0.0.1 | Host: example.org | Method: GET | Path: http://example.org/ | Status: 200 | Bytes: 961 | Duration: 148 ms | Cache: MISS
+[2026-10-11 21:49:04] Client: 127.0.0.1 | Host: example.org | Method: GET | Path: http://example.org/ | Status: 200 | Bytes: 961 | Duration: 0 ms | Cache: HIT
+[2026-10-11 21:50:58] Client: 127.0.0.1 | Host: example.org | Method: GET | Path: http://example.org/ | Status: 200 | Bytes: 961 | Duration: 163 ms | Cache: MISS
+[2026-10-11 21:51:29] Client: 127.0.0.1 | Host: example.org | Method: GET | Path: http://example.org/ | Status: 200 | Bytes: 961 | Duration: 0 ms | Cache: HIT
+[2026-10-11 21:51:49] Client: 127.0.0.1 | Host: example.com | Method: GET | Path: http://example.com/ | Status: 403 | Bytes: 22 | Duration: 0 ms | Cache: -
+[2026-10-11 21:51:59] Client: 127.0.0.1 | Host: example.org | Method: GET | Path: http://example.org/ | Status: 200 | Bytes: 961 | Duration: 0 ms | Cache: HIT
+[2026-10-11 21:52:00] Client: 127.0.0.1 | Host: example.net | Method: GET | Path: http://example.net/ | Status: 200 | Bytes: 951 | Duration: 898 ms | Cache: MISS
+[2026-10-11 21:52:00] Client: 127.0.0.1 | Host: www.iana.org | Method: GET | Path: http://www.iana.org/ | Status: 200 | Bytes: 7377 | Duration: 1002 ms | Cache: MISS
+[2026-10-11 21:52:12] Client: 127.0.0.1 | Host: this-domain-should-not-exist.invalid | Method: GET | Path: http://this-domain-should-not-exist.invalid/ | Status: 502 | Bytes: 15 | Duration: 5 ms | Cache: MISS
+[2026-10-11 21:53:00] Client: 127.0.0.1 | Host: unknown | Method: unknown | Path: - | Status: 400 | Bytes: 15 | Duration: 0 ms | Cache: -
+[2026-10-11 21:53:29] Client: 127.0.0.1 | Host: example.org | Method: GET | Path: http://example.org/ | Status: 200 | Bytes: 961 | Duration: 0 ms | Cache: HIT
+[2026-10-11 22:13:48] Client: 127.0.0.1 | Host: httpforever.com | Method: GET | Path: http://httpforever.com/ | Status: 403 | Bytes: 22 | Duration: 0 ms | Cache: -
+[2026-10-11 22:13:52] Client: 127.0.0.1 | Host: httpforever.com | Method: GET | Path: http://httpforever.com/ | Status: 403 | Bytes: 22 | Duration: 0 ms | Cache: -
+[2026-10-11 22:16:20] Client: 127.0.0.1 | Host: httpforever.com | Method: GET | Path: http://httpforever.com/ | Status: 200 | Bytes: 12980 | Duration: 486 ms | Cache: MISS
+[2026-10-11 22:16:50] Client: 127.0.0.1 | Host: httpforever.com | Method: GET | Path: http://httpforever.com/ | Status: 200 | Bytes: 12980 | Duration: 0 ms | Cache: HIT
+[2026-10-11 22:22:55] Client: 127.0.0.1 | Host: httpforever.com | Method: GET | Path: http://httpforever.com/ | Status: 200 | Bytes: 12980 | Duration: 769 ms | Cache: MISS
+[2026-10-11 22:23:32] Client: 127.0.0.1 | Host: httpforever.com | Method: GET | Path: http://httpforever.com/ | Status: 200 | Bytes: 12980 | Duration: 0 ms | Cache: HIT
+[2026-10-11 22:23:48] Client: 127.0.0.1 | Host: httpforever.com | Method: GET | Path: http://httpforever.com/ | Status: 200 | Bytes: 12980 | Duration: 0 ms | Cache: HIT
+[2026-10-11 22:38:46] Client: 127.0.0.1 | Host: httpforever.com | Method: GET | Path: http://httpforever.com/ | Status: 200 | Bytes: 12980 | Duration: 778 ms | Cache: MISS
+[2026-10-11 22:40:54] Client: 127.0.0.1 | Host: httpforever.com | Method: GET | Path: http://httpforever.com/ | Status: 200 | Bytes: 12980 | Duration: 697 ms | Cache: MISS
+[2026-10-11 22:42:43] Client: 127.0.0.1 | Host: httpforever.com | Method: GET | Path: http://httpforever.com/ | Status: 200 | Bytes: 12980 | Duration: 635 ms | Cache: MISS
+[2026-10-11 22:42:47] Client: 127.0.0.1 | Host: httpforever.com | Method: GET | Path: http://httpforever.com/ | Status: 200 | Bytes: 12980 | Duration: 0 ms | Cache: HIT
+[2026-10-11 22:43:15] Client: 127.0.0.1 | Host: example.com | Method: GET | Path: http://example.com/ | Status: 403 | Bytes: 22 | Duration: 0 ms | Cache: -
