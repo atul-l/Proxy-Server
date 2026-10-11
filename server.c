@@ -130,6 +130,16 @@ void bad_request(int client_sockfd)
     }
 }
 
+void bad_gateway(int client_sockfd){
+    const char *body = "502 Bad Gateway";
+    char response[256];
+    int length = snprintf(response, sizeof(response), "HTTP/1.1 502 Bad Gateway\r\nContent-Type: text/plain\r\nConnection: close\r\nContent-Length: %zu\r\n\r\n%s", strlen(body), body);
+    if (length > 0 && (size_t)length < sizeof(response)){
+        send_all(client_sockfd, response, (size_t)length);
+    }
+}
+
+
 void log_traffic(const char *host, const char *method, int status, long bytes, long duration_ms)
 {
     FILE *logfile = fopen("proxy.log", "a");
@@ -397,6 +407,13 @@ void *handle_client(void *arg)
             else
             {
                 printf("Destination connection failed\n");
+                log_status = 502;
+                const char *body = "502 Bad Gateway";
+                log_bytes = strlen(body);
+                bad_gateway(client_sockfd);
+                gettimeofday(&end_time, NULL);
+                long duration_ms = (end_time.tv_sec - start_time.tv_sec) * 1000L + (end_time.tv_usec - start_time.tv_usec) / 1000L;
+                log_traffic(log_host, log_method, log_status, log_bytes, duration_ms);
             }
         }
         else
