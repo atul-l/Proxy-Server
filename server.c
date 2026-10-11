@@ -30,6 +30,10 @@ struct CacheEntry
 };
 struct CacheEntry cache[CACHE_SIZE];
 pthread_mutex_t cache_mutex = PTHREAD_MUTEX_INITIALIZER;
+static __thread char tl_client_ip[INET_ADDRSTRLEN] = "unknown";
+static __thread char tl_path[2048] = "-";
+static __thread const char *tl_cache = "-";
+
 const char *blocked_domains[MAX_BLOCKED_DOMAINS] = {
     "example.com",
     "httpforever.com",
@@ -239,7 +243,7 @@ void log_traffic(const char *host, const char *method, int status, long bytes, l
     {
         snprintf(timestamp, sizeof(timestamp), "unknown-time");
     }
-    fprintf(logfile, "[%s] Host: %s | Method: %s | Status: %d | Bytes: %ld | Duration: %ld ms\n", timestamp, host, method, status, bytes, duration_ms);
+    fprintf(logfile, "[%s] Client: %s | Host: %s | Method: %s | Path: %s | Status: %d | Bytes: %ld | Duration: %ld ms | Cache: %s\n", timestamp, tl_client_ip, host, method, tl_path, status, bytes, duration_ms, tl_cache);
     fclose(logfile);
 }
 
@@ -345,6 +349,10 @@ void *handle_client(void *arg)
     struct timeval start_time, end_time;
     gettimeofday(&start_time, NULL);
     set_timeout(client_sockfd);
+    struct sockaddr_in peer;
+    socklen_t peer_len = sizeof(peer);
+    if (getpeername(client_sockfd, (struct sockaddr *)&peer, &peer_len) == 0)
+        inet_ntop(AF_INET, &peer.sin_addr, tl_client_ip, sizeof(tl_client_ip));
     char log_host[200] = "unknown";
     char log_method[20] = "unknown";
     int log_status = 0;
@@ -364,6 +372,7 @@ void *handle_client(void *arg)
         {
             snprintf(log_host, sizeof(log_host), "%s", host);
             snprintf(log_method, sizeof(log_method), "%s", method);
+            snprintf(tl_path, sizeof(tl_path), "%s", path);
             if (strcmp(method, "CONNECT") == 0)
             {
                 printf("CONNECT not supported (HTTPS)\n");
@@ -400,6 +409,7 @@ void *handle_client(void *arg)
                 size_t cached_size = 0;
                 if (get_cached_response(host, path, &cached_response, &cached_size))
                 {
+                    tl_cache = "HIT";
                     printf("CACHE HIT: %s%s\n", host, path);
                     int sent = send_all(client_sockfd, cached_response, (int)cached_size);
                     if (sent > 0)
@@ -414,6 +424,7 @@ void *handle_client(void *arg)
                     close(client_sockfd);
                     return NULL;
                 }
+                tl_cache = "MISS";
                 printf("CACHE MISS: %s%s\n", host, path);
             }
             int destination_socket = connect_server(host, 80);
@@ -478,6 +489,7 @@ void *handle_client(void *arg)
                                 }
                                 else
                                 {
+                                    tl_cache = "UNCACHEABLE";
                                     printf("Response not cached (Cache-Control / Set-Cookie)\n");
                                 }
                             }
