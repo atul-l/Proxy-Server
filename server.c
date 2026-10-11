@@ -37,7 +37,7 @@ static __thread const char *tl_cache = "-";
 
 const char *blocked_domains[MAX_BLOCKED_DOMAINS] = {
     "example.com",
-    "httpforever.com",
+    "neverssl.com",
     "textfiles.com"};
 
 int http(char *request, char *method, char *path, char *host)
@@ -457,7 +457,7 @@ void *handle_client(void *arg)
                 tl_cache = "MISS";
                 printf("CACHE MISS: %s %s\n", host, path);
             }
-            int destination_socket = connect_server(host, 80);
+            int destination_socket = connect_server(host, port);
             if (destination_socket >= 0)
             {
                 printf("Destination connection successful\n");
