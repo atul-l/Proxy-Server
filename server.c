@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -9,6 +10,8 @@
 #include <signal.h>
 #include <time.h>
 #include <sys/time.h>
+#include <arpa/inet.h>
+#include <errno.h>
 
 #define PORT 8080
 #define BUFFER_SIZE 4096
@@ -18,15 +21,20 @@
 
 struct CacheEntry
 {
-    char host[200];
+    char host[256];
     char path[2048];
     char *response;
     size_t response_size;
     time_t timestamp;
     int valid;
+    int ttl;
 };
 struct CacheEntry cache[CACHE_SIZE];
 pthread_mutex_t cache_mutex = PTHREAD_MUTEX_INITIALIZER;
+static __thread char tl_client_ip[INET_ADDRSTRLEN] = "unknown";
+static __thread char tl_path[2048] = "-";
+static __thread const char *tl_cache = "-";
+
 const char *blocked_domains[MAX_BLOCKED_DOMAINS] = {
     "example.com",
     "httpforever.com",
@@ -163,6 +171,17 @@ void bad_gateway(int client_sockfd)
     }
 }
 
+void not_implemented(int client_sockfd)
+{
+    const char *body = "501 Not Implemented";
+    char response[256];
+    int length = snprintf(response, sizeof(response), "HTTP/1.1 501 Not Implemented\r\nContent-Type: text/plain\r\nConnection: close\r\nContent-Length: %zu\r\n\r\n%s", strlen(body), body);
+    if (length > 0 && (size_t)length < sizeof(response))
+    {
+        send_all(client_sockfd, response, (size_t)length);
+    }
+}
+
 int build_request(const char *method, const char *req_path, const char *buf, int length, char *out, int out_size)
 {
     const char *end = buf + length;
@@ -224,8 +243,31 @@ void log_traffic(const char *host, const char *method, int status, long bytes, l
     {
         snprintf(timestamp, sizeof(timestamp), "unknown-time");
     }
-    fprintf(logfile, "[%s] Host: %s | Method: %s | Status: %d | Bytes: %ld | Duration: %ld ms\n", timestamp, host, method, status, bytes, duration_ms);
+    fprintf(logfile, "[%s] Client: %s | Host: %s | Method: %s | Path: %s | Status: %d | Bytes: %ld | Duration: %ld ms | Cache: %s\n", timestamp, tl_client_ip, host, method, tl_path, status, bytes, duration_ms, tl_cache);
     fclose(logfile);
+}
+
+int cache_ttl(const char *resp, size_t len)
+{
+    const char *end = memmem(resp, len, "\r\n\r\n", 4);
+    if (end == NULL || (size_t)(end - resp) >= 8192)
+        return 0;
+    size_t hlen = (size_t)(end - resp);
+    char headers[8192];
+    memcpy(headers, resp, hlen);
+    headers[hlen] = '\0';
+    if (strcasestr(headers, "\r\nSet-Cookie:") != NULL || strcasestr(headers, "no-store") != NULL ||
+        strcasestr(headers, "no-cache") != NULL || strcasestr(headers, "private") != NULL)
+        return 0;
+    const char *ma = strcasestr(headers, "max-age=");
+    if (ma != NULL)
+    {
+        int age = atoi(ma + 8);
+        if (age <= 0)
+            return 0;
+        return age > 3600 ? 3600 : age;
+    }
+    return CACHE_TTL;
 }
 
 int get_cached_response(const char *host, const char *path, char **response, size_t *response_size)
@@ -237,7 +279,7 @@ int get_cached_response(const char *host, const char *path, char **response, siz
     {
         if (cache[i].valid && strcmp(cache[i].host, host) == 0 && strcmp(cache[i].path, path) == 0)
         {
-            if (now - cache[i].timestamp < CACHE_TTL)
+            if (now - cache[i].timestamp < cache[i].ttl)
             {
                 *response = malloc(cache[i].response_size);
                 if (*response != NULL)
@@ -260,7 +302,7 @@ int get_cached_response(const char *host, const char *path, char **response, siz
     return found;
 }
 
-void store_cached_response(const char *host, const char *path, const char *response, size_t response_size)
+void store_cached_response(const char *host, const char *path, const char *response, size_t response_size, int ttl)
 {
     if (response_size == 0)
         return;
@@ -295,30 +337,9 @@ void store_cached_response(const char *host, const char *path, const char *respo
     cache[index].response = copy;
     cache[index].response_size = response_size;
     cache[index].timestamp = time(NULL);
+    cache[index].ttl = ttl;
     cache[index].valid = 1;
     pthread_mutex_unlock(&cache_mutex);
-}
-
-int recv_http_headers(int client_sockfd, char *buf, size_t buf_size)
-{
-    size_t total = 0;
-    if (buf_size < 5)
-        return -1;
-    while (total < buf_size - 1)
-    {
-        int rbytes = recv(
-            client_sockfd,
-            buf + total,
-            buf_size - 1 - total,
-            0);
-        if (rbytes <= 0)
-            return -1;
-        total += (size_t)rbytes;
-        buf[total] = '\0';
-        if (strstr(buf, "\r\n\r\n") != NULL)
-            return (int)total;
-    }
-    return -1;
 }
 
 void *handle_client(void *arg)
@@ -327,24 +348,52 @@ void *handle_client(void *arg)
     free(arg);
     struct timeval start_time, end_time;
     gettimeofday(&start_time, NULL);
+    set_timeout(client_sockfd);
+    struct sockaddr_in peer;
+    socklen_t peer_len = sizeof(peer);
+    if (getpeername(client_sockfd, (struct sockaddr *)&peer, &peer_len) == 0)
+        inet_ntop(AF_INET, &peer.sin_addr, tl_client_ip, sizeof(tl_client_ip));
     char log_host[200] = "unknown";
     char log_method[20] = "unknown";
     int log_status = 0;
     long log_bytes = 0;
     printf("Client connected: thread %lu\n", (unsigned long)pthread_self());
     char buf[BUFFER_SIZE];
-    int rbytes = recv_http_headers(client_sockfd, buf, sizeof(buf));
+    int rbytes = recv(client_sockfd, buf, BUFFER_SIZE - 1, 0);
     if (rbytes > 0)
     {
-        printf("Request headers received: %d bytes\n", rbytes);
+        buf[rbytes] = '\0';
+        printf("rbytes: %d\n", rbytes);
         printf("Message from client:\n%s\n", buf);
         char method[20];
         char path[2048];
-        char host[200];
+        char host[256];
         if (http(buf, method, path, host) == 0)
         {
-            snprintf(log_host, sizeof(log_host), "%s", host);
+            snprintf(log_host, sizeof(log_host), "%.199s", host);
             snprintf(log_method, sizeof(log_method), "%s", method);
+            snprintf(tl_path, sizeof(tl_path), "%s", path);
+            int port = 80;
+            char *colon = strchr(host, ':');
+            if (colon != NULL)
+            {
+                *colon = '\0';
+                port = atoi(colon + 1);
+                if (port <= 0 || port > 65535)
+                    port = 80;
+            }
+            if (strcmp(method, "CONNECT") == 0)
+            {
+                printf("CONNECT not supported (HTTPS)\n");
+                log_status = 501;
+                log_bytes = 19;
+                gettimeofday(&end_time, NULL);
+                long duration_ms = (end_time.tv_sec - start_time.tv_sec) * 1000L + (end_time.tv_usec - start_time.tv_usec) / 1000L;
+                not_implemented(client_sockfd);
+                log_traffic(log_host, log_method, log_status, log_bytes, duration_ms);
+                close(client_sockfd);
+                return NULL;
+            }
             printf("\nHTTP Request Details:\n");
             printf("Method: %s\n", method);
             printf("Path: %s\n", path);
@@ -369,7 +418,8 @@ void *handle_client(void *arg)
                 size_t cached_size = 0;
                 if (get_cached_response(host, path, &cached_response, &cached_size))
                 {
-                    printf("CACHE HIT: %s%s\n", host, path);
+                    tl_cache = "HIT";
+                    printf("CACHE HIT: %s %s\n", host, path);
                     int sent = send_all(client_sockfd, cached_response, (int)cached_size);
                     if (sent > 0)
                     {
@@ -383,7 +433,8 @@ void *handle_client(void *arg)
                     close(client_sockfd);
                     return NULL;
                 }
-                printf("CACHE MISS: %s%s\n", host, path);
+                tl_cache = "MISS";
+                printf("CACHE MISS: %s %s\n", host, path);
             }
             int destination_socket = connect_server(host, 80);
             if (destination_socket >= 0)
@@ -413,10 +464,15 @@ void *handle_client(void *arg)
                     close(client_sockfd);
                     return NULL;
                 }
-                int sbytes = send_all(destination_socket, buf, request_length);
+                int sbytes = send_all(destination_socket, request, request_length);
                 if (sbytes < 0)
                 {
                     printf("Failed to send HTTP request\n");
+                    log_status = 502;
+                    bad_gateway(client_sockfd);
+                    gettimeofday(&end_time, NULL);
+                    long duration_ms = (end_time.tv_sec - start_time.tv_sec) * 1000L + (end_time.tv_usec - start_time.tv_usec) / 1000L;
+                    log_traffic(log_host, log_method, log_status, 15, duration_ms);
                 }
                 else
                 {
@@ -434,8 +490,17 @@ void *handle_client(void *arg)
                         {
                             if (cacheable && full_response != NULL && full_response_size > 0 && log_status == 200)
                             {
-                                store_cached_response(host, path, full_response, full_response_size);
-                                printf("Response saved in cache\n");
+                                int ttl = cache_ttl(full_response, full_response_size);
+                                if (ttl > 0)
+                                {
+                                    store_cached_response(host, path, full_response, full_response_size, ttl);
+                                    printf("Response saved in cache (ttl %d s)\n", ttl);
+                                }
+                                else
+                                {
+                                    tl_cache = "UNCACHEABLE";
+                                    printf("Response not cached (Cache-Control / Set-Cookie)\n");
+                                }
                             }
                             free(full_response);
                             full_response = NULL;
@@ -448,12 +513,28 @@ void *handle_client(void *arg)
                             log_traffic(log_host, log_method, log_status, log_bytes, duration_ms);
                             break;
                         }
-                        if (response_bytes < 0)
-                        {
-                            printf("Failed to receive HTTP response\n");
+                        if (response_bytes < 0){
+                            int saved_errno = errno;
+                            free(full_response);
+                            full_response = NULL;
+                            if (saved_errno == EAGAIN || saved_errno == EWOULDBLOCK)
+                                printf("Destination response timed out\n");
+                            else
+                                perror("Failed to receive HTTP response");
+                            if (total_received == 0)
+                            {
+                                log_status = 502;
+                                bad_gateway(client_sockfd);
+                            }
+                            gettimeofday(&end_time, NULL);
+                            long duration_ms = (end_time.tv_sec - start_time.tv_sec) * 1000L + (end_time.tv_usec - start_time.tv_usec) / 1000L;
+
+                            log_traffic(log_host,log_method,log_status,total_received,duration_ms);
+
                             break;
                         }
-                        total_received += response_bytes;
+
+                            total_received += response_bytes;
                         if (cacheable)
                         {
                             if (full_response_size + (size_t)response_bytes <= 5 * 1024 * 1024)
@@ -502,6 +583,7 @@ void *handle_client(void *arg)
                             break;
                         }
                     }
+                    free(full_response);
                 }
                 close(destination_socket);
             }
@@ -549,7 +631,11 @@ int main()
         printf("Socket creation failed...\n");
         return 1;
     }
+    int opt = 1;
+    setsockopt(socketfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
     struct sockaddr_in server_addr;
+    memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(PORT);
     server_addr.sin_addr.s_addr = INADDR_ANY;
