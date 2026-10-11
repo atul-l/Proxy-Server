@@ -342,6 +342,28 @@ void store_cached_response(const char *host, const char *path, const char *respo
     pthread_mutex_unlock(&cache_mutex);
 }
 
+int recv_http_headers(int client_sockfd, char *buf, size_t buf_size)
+{
+    size_t total = 0;
+    if (buf_size < 5)
+        return -1;
+    while (total < buf_size - 1)
+    {
+        int rbytes = recv(
+            client_sockfd,
+            buf + total,
+            buf_size - 1 - total,
+            0);
+        if (rbytes <= 0)
+            return -1;
+        total += (size_t)rbytes;
+        buf[total] = '\0';
+        if (strstr(buf, "\r\n\r\n") != NULL)
+            return (int)total;
+    }
+    return -1;
+}
+
 void *handle_client(void *arg)
 {
     int client_sockfd = *(int *)arg;
@@ -359,11 +381,10 @@ void *handle_client(void *arg)
     long log_bytes = 0;
     printf("Client connected: thread %lu\n", (unsigned long)pthread_self());
     char buf[BUFFER_SIZE];
-    int rbytes = recv(client_sockfd, buf, BUFFER_SIZE - 1, 0);
+    int rbytes = recv_http_headers(client_sockfd, buf, sizeof(buf));
     if (rbytes > 0)
     {
-        buf[rbytes] = '\0';
-        printf("rbytes: %d\n", rbytes);
+        printf("Request headers received: %d bytes\n", rbytes);
         printf("Message from client:\n%s\n", buf);
         char method[20];
         char path[2048];
@@ -513,7 +534,8 @@ void *handle_client(void *arg)
                             log_traffic(log_host, log_method, log_status, log_bytes, duration_ms);
                             break;
                         }
-                        if (response_bytes < 0){
+                        if (response_bytes < 0)
+                        {
                             int saved_errno = errno;
                             free(full_response);
                             full_response = NULL;
@@ -529,12 +551,12 @@ void *handle_client(void *arg)
                             gettimeofday(&end_time, NULL);
                             long duration_ms = (end_time.tv_sec - start_time.tv_sec) * 1000L + (end_time.tv_usec - start_time.tv_usec) / 1000L;
 
-                            log_traffic(log_host,log_method,log_status,total_received,duration_ms);
+                            log_traffic(log_host, log_method, log_status, total_received, duration_ms);
 
                             break;
                         }
 
-                            total_received += response_bytes;
+                        total_received += response_bytes;
                         if (cacheable)
                         {
                             if (full_response_size + (size_t)response_bytes <= 5 * 1024 * 1024)
