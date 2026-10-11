@@ -19,7 +19,7 @@
 struct CacheEntry
 {
     char host[200];
-    char path[500];
+    char path[2048];
     char *response;
     size_t response_size;
     time_t timestamp;
@@ -32,19 +32,21 @@ const char *blocked_domains[MAX_BLOCKED_DOMAINS] = {
     "httpforever.com",
     "textfiles.com"};
 
-int http(char *request, char *method, char *path, char *host)
-{
+int http(char *request, char *method, char *path, char *host){
     char *host_start;
-    if (sscanf(request, "%s %s", method, path) != 2)
-    {
+    if (sscanf(request, "%19s %2047s", method, path) != 2){
+        return -1;
+    }
+    if (strlen(path) >= 2047){
         return -1;
     }
     host_start = strstr(request, "Host:");
-    if (host_start == NULL)
-    {
+    if (host_start == NULL){
         return -1;
     }
-    sscanf(host_start, "Host: %s", host);
+    if (sscanf(host_start, "Host: %199s", host) != 1){
+        return -1;
+    }
     return 0;
 }
 int is_blocked(char *host)
@@ -264,7 +266,7 @@ void *handle_client(void *arg)
         printf("rbytes: %d\n", rbytes);
         printf("Message from client:\n%s\n", buf);
         char method[20];
-        char path[500];
+        char path[2048];
         char host[200];
         if (http(buf, method, path, host) == 0)
         {
